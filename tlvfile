@@ -336,7 +336,7 @@ def parse_tlv_file(tlv_file):
         print('Invalid signature')
 
 
-def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, filename, certificate_records):
+def build_tlv_file(*, tlv_file, sast_certificate_file, version, header_version, hash_algorithm, filename, certificate_records):
     try:
         with open(sast_certificate_file, 'rb') as file:
             certificate = private_key = file.read()
@@ -365,13 +365,11 @@ def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, fil
     signature_length = private_key.key_size // 8
 
     tlv_data = bytearray()
-    tlv_data += struct.pack('> B H B B', HEADER_VERSION, 2, 1, 2)
+    (hdr_major, hdr_minor) = header_version.split('.')
+    tlv_data += struct.pack('> B H B B', HEADER_VERSION, 2, int(hdr_major), int(hdr_minor))
 
     header_length_index = len(tlv_data)
     tlv_data += struct.pack('> B H H', HEADER_LENGTH, 2, 0)
-
-    (major, minor) = version.split('.')
-    tlv_data += struct.pack('> B H B B', HEADER_SIGNER_VERSION, 2, int(major), int(minor))
 
     signer_name = ','.join([attribute.rfc4514_string() for attribute in certificate.subject]).encode('utf-8') + b'\x00'
     issuer_name = ','.join([attribute.rfc4514_string() for attribute in certificate.issuer]).encode('utf-8') + b'\x00'
@@ -380,8 +378,8 @@ def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, fil
     serial_number = serial_number.to_bytes((serial_number.bit_length() + 7) // 8, byteorder = 'big')
 
     signer_info = (struct.pack('> B H', HEADER_SIGNER_NAME, len(signer_name)) + signer_name +
-                   struct.pack('> B H', HEADER_ISSUER_NAME, len(issuer_name)) + issuer_name +
-                   struct.pack('> B H', HEADER_SERIAL_NUMBER, len(serial_number)) + serial_number)
+                   struct.pack('> B H', HEADER_SERIAL_NUMBER, len(serial_number)) + serial_number +
+                   struct.pack('> B H', HEADER_ISSUER_NAME, len(issuer_name)) + issuer_name)
 
     tlv_data += struct.pack('> B H', HEADER_SIGNER_INFO, len(signer_info)) + signer_info
     tlv_data += struct.pack('> B H', HEADER_SIGNATURE_INFO, 15)
@@ -398,6 +396,9 @@ def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, fil
 
     tlv_data += struct.pack('> B H', HEADER_FILENAME, len(filename)) + filename
     tlv_data += struct.pack('> B H I', HEADER_TIMESTAMP, 4, int(time.time()))
+
+    (major, minor) = version.split('.')
+    tlv_data += struct.pack('> B H B B', HEADER_SIGNER_VERSION, 2, int(major), int(minor))
 
     # Pad to 4 byte boundary
     while (len(tlv_data) + 3 + signature_length) % 4:
@@ -491,12 +492,13 @@ def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, fil
 
 def main():
     try:
-        short_options = 'pbv:d:F:s:c:C:t:A:a:T:H'
-        long_options = ['parse', 'build', 'version=', 'digest=', 'filename=', 'sast=', 'ccm=', 'ccm-tftp=', 'tftp=', 'capf=', 'app-server=', 'tvs=', 'help']
+        short_options = 'pbv:d:F:j:s:c:C:t:A:a:T:H'
+        long_options = ['parse', 'build', 'version=', 'digest=', 'filename=', 'header-version=', 'sast=', 'ccm=', 'ccm-tftp=', 'tftp=', 'capf=', 'app-server=', 'tvs=', 'help']
 
         mode = None
         tlv_file = None
         version = '1.0'
+        header_version = '1.2'
         hash_algorithm = 'sha1'
         filename = None
         certificate_records = []
@@ -527,6 +529,12 @@ def main():
 
                 if hash_algorithm not in ('sha1', 'sha512'):
                     raise ProgramError(f'Invalid digest: {hash_algorithm}')
+
+            elif option in ('-j', '--header-version'):
+                header_version = argument
+
+                if header_version not in ('1.1', '1.2'):
+                    raise ProgramError(f'Invalid header version: {header_version}')
 
             elif option in ('-F', '--filename'):
                 filename = argument
@@ -574,6 +582,7 @@ def main():
                   '  -b, --build                       build new .tlv file using options below\n'
                   '  -v, --version VERSION             signer version: 1.0 or 1.1 (default 1.0)\n'
                   '  -d, --digest ALGORITHM            digest algorithm for signature: sha1 or sha512 (default sha1)\n'
+                  '  -j, --header-version VERSION      header format version: 1.1 or 1.2 (default 1.2)\n'
                   '  -F, --filename NAME               file name to store in .tlv header\n'
                   '  -s, --sast SAST-CERT-FILE         add certificate with SAST role\n'
                   '  -c, --ccm CCM-CERT-FILE           add certificate with CCM role\n'
@@ -608,7 +617,15 @@ def main():
             if sast_certificate_file is None:
                 raise ProgramError('No SAST certificate file specified')
 
-            build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, filename, certificate_records)
+            build_tlv_file(
+                tlv_file=tlv_file,
+                sast_certificate_file=sast_certificate_file,
+                version=version,
+                header_version=header_version,
+                hash_algorithm=hash_algorithm,
+                filename=filename,
+                certificate_records=certificate_records,
+            )
 
     except ProgramError as error:
         print(str(error), file = sys.stderr)
