@@ -336,7 +336,7 @@ def parse_tlv_file(tlv_file):
         print('Invalid signature')
 
 
-def build_tlv_file(*, tlv_file, sast_certificate_file, version, hash_algorithm, filename, certificate_records):
+def build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, filename, certificate_records):
     try:
         with open(sast_certificate_file, 'rb') as file:
             certificate = private_key = file.read()
