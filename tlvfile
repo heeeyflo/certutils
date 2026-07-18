@@ -608,14 +608,7 @@ def main():
             if sast_certificate_file is None:
                 raise ProgramError('No SAST certificate file specified')
 
-            build_tlv_file(
-                tlv_file=tlv_file,
-                sast_certificate_file=sast_certificate_file,
-                version=version,
-                hash_algorithm=hash_algorithm,
-                filename=filename,
-                certificate_records=certificate_records,
-            )
+            build_tlv_file(tlv_file, sast_certificate_file, version, hash_algorithm, filename, certificate_records)
 
     except ProgramError as error:
         print(str(error), file = sys.stderr)
